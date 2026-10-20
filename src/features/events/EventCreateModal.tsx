@@ -207,15 +207,37 @@ export const EventCreateModal: React.FC<EventCreateModalProps> = ({
     try {
       setGenerationStep('Analyzing celebration context and guest requirements...');
 
-      const response = await fetch('/api/plan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(validData),
-      });
+      let response: Response;
+      try {
+        response = await fetch('/api/plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(validData),
+        });
+      } catch (fetchErr: unknown) {
+        console.error('[EventCreateModal Network Error]:', fetchErr);
+        setApiError('Unable to connect to the plan generation server. Please check your network or try again.');
+        setApiErrorCode('NETWORK_ERROR');
+        setIsGenerating(false);
+        return;
+      }
 
-      const data = await response.json();
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (parseErr: unknown) {
+        console.error('[EventCreateModal Parse Error]:', parseErr);
+        setApiError(
+          response.status === 504
+            ? 'The AI generation timed out. Please try again or continue with the Starter Plan.'
+            : `Server returned an unexpected response (status ${response.status}). Please try again or use the Starter Plan.`
+        );
+        setApiErrorCode('SERVER_ERROR');
+        setIsGenerating(false);
+        return;
+      }
 
       if (!response.ok || !data.success) {
         setApiError(data.error || 'Plan generation failed. Please try again.');

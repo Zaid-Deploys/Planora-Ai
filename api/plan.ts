@@ -386,21 +386,6 @@ export async function generatePlanWithGemini(
   for (const modelName of candidateModels) {
     try {
       try {
-        const client = new GoogleGenAI({ apiKey });
-        const response = await client.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.7,
-          },
-        });
-        rawOutputText = response.text || '';
-        if (rawOutputText.trim().length > 0) {
-          successfulModel = modelName;
-          break;
-        }
-      } catch {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
           model: modelName,
@@ -413,6 +398,21 @@ export async function generatePlanWithGemini(
         const result = await model.generateContent(prompt);
         const response = await result.response;
         rawOutputText = response.text();
+        if (rawOutputText.trim().length > 0) {
+          successfulModel = modelName;
+          break;
+        }
+      } catch {
+        const client = new GoogleGenAI({ apiKey });
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
+          },
+        });
+        rawOutputText = response.text || '';
         if (rawOutputText.trim().length > 0) {
           successfulModel = modelName;
           break;
