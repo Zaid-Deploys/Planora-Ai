@@ -425,6 +425,47 @@ export async function generatePlanWithGemini(
   }
 
   if (!rawOutputText || rawOutputText.trim().length === 0) {
+    try {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      const listData = (await listRes.json()) as {
+        models?: Array<{ name: string; supportedGenerationMethods?: string[] }>;
+        error?: { message: string };
+      };
+
+      if (listData?.models && Array.isArray(listData.models)) {
+        const discovered = listData.models
+          .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m) => m.name.replace(/^models\//, ''));
+
+        for (const modelName of discovered) {
+          try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({
+              model: modelName,
+              generationConfig: {
+                responseMimeType: 'application/json',
+                temperature: 0.7,
+              },
+            });
+
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            rawOutputText = response.text();
+            if (rawOutputText.trim().length > 0) {
+              successfulModel = modelName;
+              break;
+            }
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch {
+      // fall through to final error check
+    }
+  }
+
+  if (!rawOutputText || rawOutputText.trim().length === 0) {
     throw new Error(`Upstream Gemini API error: ${lastError?.message || 'Empty or unavailable model response'}`);
   }
 
