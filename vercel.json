@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "api/plan.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 60
+      }
     },
     {
       "src": "package.json",
