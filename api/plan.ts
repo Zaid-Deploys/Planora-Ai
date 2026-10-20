@@ -150,47 +150,123 @@ export const planGenerationRequestSchema = z.object({
 });
 
 export const generatedPlanSchema = z.object({
-  overview: z.string().min(10),
-  themeDirection: z.string().min(5),
-  suggestedActivities: z.array(z.string()).min(1),
-  budgetAllocations: z.array(
-    z.object({
-      categoryKey: z.string(),
-      name: z.string(),
-      percentage: z.number().min(0).max(100),
-      allocatedAmount: z.number().nonnegative(),
-    })
-  ).min(3),
-  suggestedExpenses: z.array(
-    z.object({
-      categoryKey: z.string(),
-      title: z.string(),
-      estimatedCost: z.number().nonnegative(),
-    })
-  ).default([]),
-  tasks: z.array(
-    z.object({
-      title: z.string().min(3),
-      description: z.string().default(''),
-      category: z.string(),
-      daysBeforeEvent: z.number().int(),
-      priority: taskPrioritySchema,
-    })
-  ).min(3),
-  vendorCriteria: z.array(
-    z.object({
-      category: z.string(),
-      criteria: z.string(),
-    })
-  ).default([]),
-  ideas: z.array(
-    z.object({
-      category: ideaCategorySchema,
-      title: z.string(),
-      description: z.string(),
-      tags: z.array(z.string()).optional(),
-    })
-  ).default([]),
+  overview: z.string().default('An unforgettable celebration tailored to your vision.'),
+  themeDirection: z.string().default('Classic & Joyful atmosphere with coordinated details.'),
+  suggestedActivities: z.array(z.string()).default([]),
+  budgetAllocations: z
+    .array(
+      z
+        .object({
+          categoryKey: z.string().default('miscellaneous'),
+          name: z.string().optional(),
+          category: z.string().optional(),
+          title: z.string().optional(),
+          percentage: z.coerce.number().default(10),
+          allocatedAmount: z.coerce.number().default(0),
+        })
+        .transform((item) => ({
+          categoryKey: item.categoryKey || item.category || 'miscellaneous',
+          name: item.name || item.title || item.category || 'General',
+          percentage: Math.max(0, Math.min(100, item.percentage)),
+          allocatedAmount: Math.max(0, item.allocatedAmount),
+        }))
+    )
+    .default([]),
+  suggestedExpenses: z
+    .array(
+      z
+        .object({
+          categoryKey: z.string().optional(),
+          title: z.string().optional(),
+          name: z.string().optional(),
+          item: z.string().optional(),
+          description: z.string().optional(),
+          estimatedCost: z.coerce.number().default(0),
+          cost: z.coerce.number().optional(),
+          amount: z.coerce.number().optional(),
+        })
+        .transform((exp) => ({
+          categoryKey: exp.categoryKey || 'miscellaneous',
+          title: exp.title || exp.name || exp.item || exp.description || 'Estimated Expense',
+          estimatedCost: Math.max(0, exp.estimatedCost || exp.cost || exp.amount || 0),
+        }))
+    )
+    .default([]),
+  tasks: z
+    .array(
+      z
+        .object({
+          title: z.string().optional(),
+          name: z.string().optional(),
+          task: z.string().optional(),
+          description: z.string().default(''),
+          category: z.string().default('General'),
+          daysBeforeEvent: z.coerce.number().default(7),
+          daysBefore: z.coerce.number().optional(),
+          priority: z.string().optional(),
+        })
+        .transform((t) => {
+          const rawPriority = (t.priority || 'medium').toLowerCase();
+          const validPriority: TaskPriority = ['low', 'medium', 'high', 'urgent'].includes(rawPriority)
+            ? (rawPriority as TaskPriority)
+            : 'medium';
+          return {
+            title: t.title || t.name || t.task || 'Planning milestone',
+            description: t.description || '',
+            category: t.category || 'General',
+            daysBeforeEvent: typeof t.daysBeforeEvent === 'number' ? t.daysBeforeEvent : (t.daysBefore ?? 7),
+            priority: validPriority,
+          };
+        })
+    )
+    .default([]),
+  vendorCriteria: z
+    .array(
+      z
+        .object({
+          category: z.string().default('General'),
+          criteria: z.string().default(''),
+          description: z.string().optional(),
+        })
+        .transform((v) => ({
+          category: v.category || 'General',
+          criteria: v.criteria || v.description || 'Standard quality check',
+        }))
+    )
+    .default([]),
+  ideas: z
+    .array(
+      z
+        .object({
+          category: z.string().optional(),
+          title: z.string().optional(),
+          name: z.string().optional(),
+          description: z.string().default(''),
+          tags: z.array(z.string()).optional(),
+        })
+        .transform((i) => {
+          const rawCat = (i.category || 'theme').toLowerCase();
+          const validCategory: IdeaCategory = [
+            'theme',
+            'food',
+            'activity',
+            'invitation',
+            'entertainment',
+            'budget_friendly',
+            'accessibility',
+            'weather',
+          ].includes(rawCat)
+            ? (rawCat as IdeaCategory)
+            : 'theme';
+          return {
+            category: validCategory,
+            title: i.title || i.name || 'Creative Idea',
+            description: i.description || '',
+            tags: i.tags || [],
+          };
+        })
+    )
+    .default([]),
   risksAndContingencies: z.array(z.string()).default([]),
   assumptionsAndQuestions: z.array(z.string()).default([]),
 });
