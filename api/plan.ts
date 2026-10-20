@@ -244,7 +244,7 @@ export function checkRateLimit(
 // ==========================================
 // 4. Prompt Sanitization & Construction
 // ==========================================
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-flash-lite-latest';
 
 export function getGeminiModel(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
@@ -374,9 +374,9 @@ export async function generatePlanWithGemini(
       [
         preferredModel?.trim(),
         process.env.GEMINI_MODEL?.trim(),
-        'gemini-1.5-flash',
+        'gemini-flash-lite-latest',
         'gemini-2.0-flash',
-        'gemini-1.5-pro',
+        'gemini-1.5-flash',
       ].filter(Boolean) as string[]
     )
   );
