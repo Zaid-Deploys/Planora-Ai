@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import handler from '../api/plan';
-import { checkRateLimit } from '../api/_lib/rate-limit';
 
 function createMockReqRes(method: string = 'POST', body: unknown = {}, ip: string = '127.0.0.1') {
   let statusCode = 200;
