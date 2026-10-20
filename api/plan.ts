@@ -244,7 +244,7 @@ export function checkRateLimit(
 // ==========================================
 // 4. Prompt Sanitization & Construction
 // ==========================================
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.8-flash';
 
 export function getGeminiModel(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
@@ -363,46 +363,70 @@ export function extractJsonFromText(rawText: string): string {
 export async function generatePlanWithGemini(
   req: PlanGenerationRequest,
   apiKey: string,
-  modelName: string = DEFAULT_MODEL
+  preferredModel?: string
 ): Promise<PlanGenerationResponse> {
   const prompt = buildPrompt(req);
   let rawOutputText = '';
+  let successfulModel = '';
 
-  try {
-    const client = new GoogleGenAI({ apiKey });
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        temperature: 0.7,
-      },
-    });
+  const candidateModels = Array.from(
+    new Set(
+      [
+        preferredModel?.trim(),
+        process.env.GEMINI_MODEL?.trim(),
+        'gemini-3.8-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-2.5-flash',
+      ].filter(Boolean) as string[]
+    )
+  );
 
-    rawOutputText = response.text || '';
-  } catch (err: unknown) {
+  let lastError: Error | null = null;
+
+  for (const modelName of candidateModels) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        },
-      });
+      try {
+        const client = new GoogleGenAI({ apiKey });
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
+          },
+        });
+        rawOutputText = response.text || '';
+        if (rawOutputText.trim().length > 0) {
+          successfulModel = modelName;
+          break;
+        }
+      } catch {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
+          },
+        });
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      rawOutputText = response.text();
-    } catch (fallbackErr: unknown) {
-      const originalMessage = err instanceof Error ? err.message : String(err);
-      const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      throw new Error(`Upstream Gemini API error: ${fallbackMessage || originalMessage}`);
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        rawOutputText = response.text();
+        if (rawOutputText.trim().length > 0) {
+          successfulModel = modelName;
+          break;
+        }
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      continue;
     }
   }
 
   if (!rawOutputText || rawOutputText.trim().length === 0) {
-    throw new Error('Gemini API returned an empty response.');
+    throw new Error(`Upstream Gemini API error: ${lastError?.message || 'Empty or unavailable model response'}`);
   }
 
   const jsonString = extractJsonFromText(rawOutputText);
@@ -436,7 +460,7 @@ export async function generatePlanWithGemini(
 
   return {
     success: true,
-    model: modelName,
+    model: successfulModel || candidateModels[0] || DEFAULT_MODEL,
     overview: data.overview,
     themeDirection: data.themeDirection,
     suggestedActivities: data.suggestedActivities,
