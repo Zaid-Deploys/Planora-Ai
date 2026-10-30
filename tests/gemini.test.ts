@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildPrompt, extractJsonFromText } from '../api/_lib/gemini';
 import { PlanGenerationRequest } from '../src/types/api';
 
@@ -78,5 +78,58 @@ describe('Gemini Prompt Construction & JSON Sanitization', () => {
       expect(isNonRecoverableError(null)).toBe(false);
     });
   });
+
+  describe('Timeout, AbortController & Timer Cleanup', () => {
+    it('aborts the request and clears timeout timer when timeout is reached', async () => {
+      const { callGeminiModel } = await import('../api/_lib/gemini');
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+      let capturedSignal: AbortSignal | undefined;
+      const fakeGenAI: any = {
+        getGenerativeModel: vi.fn().mockReturnValue({
+          generateContent: vi.fn().mockImplementation((_prompt: string, opts: any) => {
+            capturedSignal = opts?.signal;
+            return new Promise((_, reject) => {
+              if (opts?.signal) {
+                opts.signal.addEventListener('abort', () => {
+                  reject(new Error('AbortError: The user aborted a request.'));
+                });
+              }
+            });
+          }),
+        }),
+      };
+
+      await expect(
+        callGeminiModel(fakeGenAI, 'test-model', 'prompt', 50)
+      ).rejects.toThrow('timed out after 50ms');
+
+      expect(capturedSignal).toBeDefined();
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it('clears timeout timer on successful request resolution', async () => {
+      const { callGeminiModel } = await import('../api/_lib/gemini');
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+      const fakeGenAI: any = {
+        getGenerativeModel: vi.fn().mockReturnValue({
+          generateContent: vi.fn().mockResolvedValue({
+            response: {
+              text: () => '{"overview": "quick success"}',
+            },
+          }),
+        }),
+      };
+
+      const result = await callGeminiModel(fakeGenAI, 'test-model', 'prompt', 5000);
+      expect(result).toBe('{"overview": "quick success"}');
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+      clearTimeoutSpy.mockRestore();
+    });
+  });
 });
+
 

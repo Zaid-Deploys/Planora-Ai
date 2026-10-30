@@ -161,7 +161,7 @@ export function isNonRecoverableError(err: unknown): boolean {
  * Calls Gemini using the single primary GoogleGenerativeAI SDK.
  * Passes AbortSignal and timeout options so underlying HTTP requests are aborted on timeout.
  */
-async function callGeminiModel(
+export async function callGeminiModel(
   genAI: GoogleGenerativeAI,
   modelName: string,
   prompt: string,
@@ -188,7 +188,11 @@ async function callGeminiModel(
       } catch {
         // Ignore any abort error
       }
-      reject(new Error(`AI generation request timed out after ${Math.round(timeoutMs / 1000)} seconds.`));
+      const durationStr =
+        timeoutMs < 1000
+          ? `${timeoutMs}ms`
+          : `${Math.round(timeoutMs / 1000)} second${Math.round(timeoutMs / 1000) === 1 ? '' : 's'}`;
+      reject(new Error(`AI generation request timed out after ${durationStr}.`));
     }, timeoutMs);
   });
 
