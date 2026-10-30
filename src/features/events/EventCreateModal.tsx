@@ -224,9 +224,9 @@ export const EventCreateModal: React.FC<EventCreateModalProps> = ({
         return;
       }
 
-      let data: any;
+      let rawData: unknown;
       try {
-        data = await response.json();
+        rawData = await response.json();
       } catch (parseErr: unknown) {
         console.error('[EventCreateModal Parse Error]:', parseErr);
         setApiError(
@@ -239,14 +239,43 @@ export const EventCreateModal: React.FC<EventCreateModalProps> = ({
         return;
       }
 
-      if (!response.ok || !data.success) {
-        setApiError(data.error || 'Plan generation failed. Please try again.');
-        setApiErrorCode(data.code || 'API_ERROR');
+      if (!response.ok || !rawData || typeof rawData !== 'object') {
+        const errorMsg =
+          rawData && typeof rawData === 'object' && 'error' in rawData && typeof (rawData as any).error === 'string'
+            ? (rawData as any).error
+            : 'Plan generation failed. Please try again.';
+        const errorCode =
+          rawData && typeof rawData === 'object' && 'code' in rawData && typeof (rawData as any).code === 'string'
+            ? (rawData as any).code
+            : 'API_ERROR';
+        setApiError(errorMsg);
+        setApiErrorCode(errorCode);
         setIsGenerating(false);
         return;
       }
 
-      const planData = data as PlanGenerationResponse;
+      const resObj = rawData as Record<string, unknown>;
+      if (!resObj.success) {
+        setApiError(typeof resObj.error === 'string' ? resObj.error : 'Plan generation failed. Please try again.');
+        setApiErrorCode(typeof resObj.code === 'string' ? resObj.code : 'API_ERROR');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Defensive validation of required payload arrays and fields
+      if (
+        !Array.isArray(resObj.budgetAllocations) ||
+        !Array.isArray(resObj.tasks) ||
+        typeof resObj.overview !== 'string' ||
+        typeof resObj.themeDirection !== 'string'
+      ) {
+        setApiError('The AI plan returned an incomplete structure. Please try again or use the Starter Plan.');
+        setApiErrorCode('MALFORMED_PLAN');
+        setIsGenerating(false);
+        return;
+      }
+
+      const planData = rawData as PlanGenerationResponse;
       setGenerationStep('Constructing personalized budget allocations and timeline...');
 
       const eventId = `event-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;

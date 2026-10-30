@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildPrompt, extractJsonFromText } from '../api/_lib/gemini';
+import { buildPrompt, extractJsonFromText } from '../api/plan';
 import { PlanGenerationRequest } from '../src/types/api';
 
 describe('Gemini Prompt Construction & JSON Sanitization', () => {
@@ -43,7 +43,7 @@ describe('Gemini Prompt Construction & JSON Sanitization', () => {
 
   describe('Model Selection & Error Classification Strategy', () => {
     it('uses DEFAULT_PRIMARY_MODEL by default and respects process.env.GEMINI_MODEL', async () => {
-      const { getGeminiModel, DEFAULT_PRIMARY_MODEL } = await import('../api/_lib/gemini');
+      const { getGeminiModel, DEFAULT_PRIMARY_MODEL } = await import('../api/plan');
       expect(DEFAULT_PRIMARY_MODEL).toBe('gemini-flash-lite-latest');
 
       const original = process.env.GEMINI_MODEL;
@@ -60,7 +60,7 @@ describe('Gemini Prompt Construction & JSON Sanitization', () => {
     });
 
     it('correctly classifies non-recoverable errors to prevent futile retries', async () => {
-      const { isNonRecoverableError } = await import('../api/_lib/gemini');
+      const { isNonRecoverableError } = await import('../api/plan');
 
       // Non-recoverable: 401, 403, 429, API key errors, quota
       expect(isNonRecoverableError(new Error('API_KEY_INVALID: Key not found'))).toBe(true);
@@ -81,7 +81,7 @@ describe('Gemini Prompt Construction & JSON Sanitization', () => {
 
   describe('Timeout, AbortController & Timer Cleanup', () => {
     it('aborts the request and clears timeout timer when timeout is reached', async () => {
-      const { callGeminiModel } = await import('../api/_lib/gemini');
+      const { callGeminiModel } = await import('../api/plan');
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
       let capturedSignal: AbortSignal | undefined;
@@ -111,7 +111,7 @@ describe('Gemini Prompt Construction & JSON Sanitization', () => {
     });
 
     it('clears timeout timer on successful request resolution', async () => {
-      const { callGeminiModel } = await import('../api/_lib/gemini');
+      const { callGeminiModel } = await import('../api/plan');
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
       const fakeGenAI: any = {

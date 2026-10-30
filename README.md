@@ -50,10 +50,7 @@ Planora AI delivers:
 ```
 planora-ai/
 ├── api/
-│   ├── plan.ts                     # Vercel serverless function (POST /api/plan)
-│   └── _lib/
-│       ├── gemini.ts               # Google Gen AI SDK wrapper, prompt isolation, JSON schema
-│       └── rate-limit.ts           # Per-IP sliding-window rate limiter
+│   └── plan.ts                     # Self-contained Vercel serverless function (POST /api/plan, rate limiter, Gemini client)
 ├── public/
 │   ├── favicon.svg                 # Planora brand mark (compass & celebration spark)
 │   └── site.webmanifest            # Web application manifest
@@ -208,10 +205,10 @@ Planora AI integrates with Google Gemini via official Node.js SDKs exclusively o
 ### Supported Environment Variables
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-flash-lite-latest
 ```
 
-- Supported models: `gemini-2.5-flash` (default, recommended for speed and structured outputs), `gemini-2.5-pro`, `gemini-1.5-flash`.
+- Supported models: `gemini-flash-lite-latest` (default, recommended for zero-latency structured output), `gemini-1.5-flash` (automatic fallback), `gemini-2.5-flash`, `gemini-2.5-pro`.
 - **System Prompt Boundaries:** User notes are wrapped in `<untrusted_user_notes>` tags with explicit instructions preventing prompt injection or constraint override.
 - **Response Format:** Requests JSON output (`responseMimeType: 'application/json'`). Strips any accidental markdown wrappers (` ```json `).
 - **Graceful Fallback:** If `GEMINI_API_KEY` is not present, `/api/plan` returns HTTP 503 with an explanation. The frontend alerts the user and provides a one-click button to generate a deterministic starter plan.
@@ -221,7 +218,7 @@ GEMINI_MODEL=gemini-2.5-flash
 ## 10. Security & Privacy Measures
 
 1. **Zero Secret Leakage:** `GEMINI_API_KEY` is accessed only within `api/plan.ts`. It is never bundled into frontend assets or saved in `localStorage`.
-2. **Input Validation:** All client form inputs and API payloads are strictly validated using Zod schemas with length constraints (e.g. notes capped at 1500 characters).
+2. **Input Validation:** All client form inputs and API payloads are strictly validated using Zod schemas with length constraints (e.g. notes capped at 2000 characters).
 3. **Safe URL Handling:** Vendor website links are validated with `isValidHttpUrl()`. Protocols other than `http:` and `https:` (such as `javascript:`, `data:`, `vbscript:`) are rejected.
 4. **No Arbitrary HTML Rendering:** Planora AI does not use `dangerouslySetInnerHTML`. All model responses are parsed into structured data before rendering via React JSX.
 5. **Client Rate Limiting:** An in-memory sliding-window limiter on `/api/plan` restricts requests to 15 per minute per client IP.
@@ -303,7 +300,7 @@ npm run build
    Open `.env` and add your Google Gemini API key:
    ```env
    GEMINI_API_KEY=AIzaSy...
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=gemini-flash-lite-latest
    ```
    *(Note: The application will run locally and allow full planning even without an API key using the deterministic starter plan engine).*
 
@@ -334,7 +331,7 @@ Planora AI is engineered for zero-config Vercel deployment hosting both the Vite
 3. Framework Preset will auto-detect as **Vite**.
 4. In **Environment Variables**, add:
    - `GEMINI_API_KEY`: Your Google AI Studio API key.
-   - `GEMINI_MODEL`: `gemini-2.5-flash` (optional).
+   - `GEMINI_MODEL`: `gemini-flash-lite-latest` (optional).
 5. Click **Deploy**.
 
 #### Method 2: Vercel CLI
