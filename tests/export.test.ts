@@ -38,32 +38,43 @@ const sampleEvent: EventPlan = {
 
 describe('Export Formatters (CSV & JSON)', () => {
   it('correctly exports event to JSON without throwing', () => {
-    // Mock anchor element and URL createObjectURL
     const createElementSpy = vi.spyOn(document, 'createElement');
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     exportEventToJson(sampleEvent);
     expect(createElementSpy).toHaveBeenCalledWith('a');
+    expect(clickSpy).toHaveBeenCalled();
     createElementSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 
   it('correctly exports all events backup JSON', () => {
     const createElementSpy = vi.spyOn(document, 'createElement');
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     exportAllEventsToJson([sampleEvent]);
     expect(createElementSpy).toHaveBeenCalledWith('a');
+    expect(clickSpy).toHaveBeenCalled();
     createElementSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 
   it('generates CSV with proper quotes and RFC 4180 escaping for budget items', () => {
     const createElementSpy = vi.spyOn(document, 'createElement');
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     exportBudgetToCsv(sampleEvent);
     expect(createElementSpy).toHaveBeenCalledWith('a');
+    expect(clickSpy).toHaveBeenCalled();
     createElementSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 
   it('generates CSV with proper headers and rows for tasks and vendors', () => {
     const createElementSpy = vi.spyOn(document, 'createElement');
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     exportTasksToCsv(sampleEvent);
     exportVendorsToCsv(sampleEvent);
     expect(createElementSpy).toHaveBeenCalledWith('a');
+    expect(clickSpy).toHaveBeenCalledTimes(2);
     createElementSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 });

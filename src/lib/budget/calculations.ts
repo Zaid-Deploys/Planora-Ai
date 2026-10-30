@@ -149,40 +149,104 @@ export function calculateCategorySummaries(
 }
 
 /**
+ * Reconciles budget allocations so that:
+ * 1. Percentages sum to EXACTLY 100.0% using the Largest Remainder Method (Hare-Niemeyer).
+ * 2. Allocated amounts in minor currency units (cents/paise) sum to EXACTLY totalBudget.
+ * 3. Rounding is deterministic and free of floating-point drift.
+ */
+export function reconcileBudgetAllocations(
+  totalBudget: number,
+  allocations: Array<{
+    id?: string;
+    categoryKey: string;
+    name: string;
+    percentage: number;
+    allocatedAmount?: number;
+  }>
+): BudgetCategoryAllocation[] {
+  if (allocations.length === 0) return [];
+
+  const safeBudget = Math.max(0, Number.isFinite(totalBudget) ? totalBudget : 0);
+  const totalCents = toCents(safeBudget);
+
+  // 1. Calculate raw total percentages (defensively non-negative)
+  const rawPercentages = allocations.map((a) => Math.max(0, Number.isFinite(a.percentage) ? a.percentage : 0));
+  const rawSum = rawPercentages.reduce((sum, p) => sum + p, 0);
+
+  // If all percentages are 0 or empty, distribute equally
+  const count = allocations.length;
+  const exactPercentages = rawPercentages.map((p) => (rawSum > 0 ? (p / rawSum) * 100 : 100 / count));
+
+  // 2. Largest Remainder Method for Percentages (target: 1000 tenths = 100.0%)
+  const TARGET_TENTHS = 1000;
+  const scaledTenths = exactPercentages.map((p) => p * 10);
+  const floorTenths = scaledTenths.map((s) => Math.floor(s));
+  const tenthsRemainders = scaledTenths.map((s, idx) => ({
+    idx,
+    rem: s - (floorTenths[idx] ?? 0),
+  }));
+
+  const tenthsSum = floorTenths.reduce((sum, t) => sum + t, 0);
+  const neededTenths = Math.max(0, Math.min(count, TARGET_TENTHS - tenthsSum));
+
+  // Stable sort by remainder descending
+  tenthsRemainders.sort((a, b) => b.rem - a.rem || a.idx - b.idx);
+  const tenthsBonusIndices = new Set(tenthsRemainders.slice(0, neededTenths).map((r) => r.idx));
+
+  const reconciledPercentages = floorTenths.map((t, idx) => {
+    const finalTenths = t + (tenthsBonusIndices.has(idx) ? 1 : 0);
+    return Math.round(finalTenths) / 10;
+  });
+
+  // 3. Largest Remainder Method for Minor Currency Units (cents)
+  let reconciledAmounts: number[];
+  if (totalCents === 0) {
+    reconciledAmounts = allocations.map(() => 0);
+  } else {
+    const idealCents = exactPercentages.map((p) => (totalCents * p) / 100);
+    const floorCents = idealCents.map((c) => Math.floor(c));
+    const centRemainders = idealCents.map((c, idx) => ({
+      idx,
+      rem: c - (floorCents[idx] ?? 0),
+    }));
+
+    const centsSum = floorCents.reduce((sum, c) => sum + c, 0);
+    const neededCents = Math.max(0, Math.min(count, totalCents - centsSum));
+
+    centRemainders.sort((a, b) => b.rem - a.rem || a.idx - b.idx);
+    const centBonusIndices = new Set(centRemainders.slice(0, neededCents).map((r) => r.idx));
+
+    reconciledAmounts = floorCents.map((c, idx) => {
+      const finalCents = c + (centBonusIndices.has(idx) ? 1 : 0);
+      return fromCents(finalCents);
+    });
+  }
+
+  // 4. Construct reconciled allocation items
+  return allocations.map((alloc, idx) => ({
+    id: alloc.id || `alloc-${alloc.categoryKey}-${idx}`,
+    categoryKey: alloc.categoryKey,
+    name: alloc.name,
+    percentage: reconciledPercentages[idx] ?? 0,
+    allocatedAmount: reconciledAmounts[idx] ?? 0,
+  }));
+}
+
+/**
  * Normalizes percentage allocations so they cleanly add up to 100% and amounts match totalBudget exactly.
  */
 export function normalizeAllocations(
   totalBudget: number,
   categories: { key: string; name: string; percent: number }[]
 ): BudgetCategoryAllocation[] {
-  if (totalBudget <= 0 || categories.length === 0) return [];
-
-  const totalPercent = categories.reduce((sum, c) => sum + c.percent, 0);
-  let accumulatedCents = 0;
-  const totalCents = toCents(totalBudget);
-
-  const result: BudgetCategoryAllocation[] = categories.map((cat, index) => {
-    const normalizedPercent = totalPercent > 0 ? (cat.percent / totalPercent) * 100 : 0;
-    // Calculate cent share
-    let centShare = Math.floor((totalCents * normalizedPercent) / 100);
-
-    // If it's the last item, allocate remaining cents to ensure total matches exactly
-    if (index === categories.length - 1) {
-      centShare = totalCents - accumulatedCents;
-    } else {
-      accumulatedCents += centShare;
-    }
-
-    return {
-      id: `alloc-${cat.key}-${index}`,
-      categoryKey: cat.key,
-      name: cat.name,
-      percentage: Math.round(normalizedPercent * 10) / 10,
-      allocatedAmount: Math.max(0, fromCents(centShare)),
-    };
-  });
-
-  return result;
+  if (categories.length === 0) return [];
+  const items = categories.map((cat, index) => ({
+    id: `alloc-${cat.key}-${index}`,
+    categoryKey: cat.key,
+    name: cat.name,
+    percentage: cat.percent,
+  }));
+  return reconcileBudgetAllocations(totalBudget, items);
 }
 
 /**

@@ -34,11 +34,14 @@ function createMockReqRes(method: string = 'POST', body: unknown = {}, ip: strin
   return { req, res };
 }
 
+import { clearRateLimitCache } from '../api/_lib/rate-limit';
+
 describe('Serverless API Endpoint /api/plan', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     vi.resetModules();
+    clearRateLimitCache();
     process.env = { ...originalEnv };
     delete process.env.GEMINI_API_KEY;
   });
@@ -117,10 +120,51 @@ describe('Serverless API Endpoint /api/plan', () => {
       if (res.getStatusCode() === 429) {
         rateLimited = true;
         expect(res.getData().code).toBe('RATE_LIMIT_EXCEEDED');
+        expect(res.getHeaders()['X-RateLimit-Remaining']).toBe('0');
+        expect(res.getHeaders()['X-RateLimit-Reset']).toBeDefined();
         break;
       }
     }
 
     expect(rateLimited).toBe(true);
+  });
+
+  it('rejects oversized payloads exceeding 50 KB with 413 Payload Too Large', async () => {
+    // Generate a payload string larger than 50 KB (50 * 1024 bytes)
+    const giantNotes = 'A'.repeat(55 * 1024);
+    const oversizedBodyString = JSON.stringify({
+      name: 'Oversized Event',
+      type: 'wedding',
+      date: '2026-12-01',
+      location: 'Goa',
+      guestCount: 50,
+      totalBudget: 100000,
+      notes: giantNotes,
+    });
+
+    const { req, res } = createMockReqRes('POST', oversizedBodyString);
+    await handler(req, res);
+
+    expect(res.getStatusCode()).toBe(413);
+    expect(res.getData().success).toBe(false);
+    expect(res.getData().code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('rejects malformed stringified JSON payloads with 400 Invalid JSON', async () => {
+    const { req, res } = createMockReqRes('POST', '{ not-valid-json: true ');
+    await handler(req, res);
+
+    expect(res.getStatusCode()).toBe(400);
+    expect(res.getData().success).toBe(false);
+    expect(res.getData().code).toBe('INVALID_JSON');
+  });
+
+  it('rejects empty or non-object bodies with 400 Empty Body', async () => {
+    const { req, res } = createMockReqRes('POST', null);
+    await handler(req, res);
+
+    expect(res.getStatusCode()).toBe(400);
+    expect(res.getData().success).toBe(false);
+    expect(res.getData().code).toBe('EMPTY_BODY');
   });
 });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Calendar,
   Sparkles,
@@ -148,30 +148,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalSavedEvents = events.length;
 
   // Filter upcoming vs past events
-  const upcomingEvents = events.filter((e) => calculateDaysRemaining(e.date) >= 0);
+  const upcomingEvents = useMemo(() => {
+    return events.filter((e) => calculateDaysRemaining(e.date) >= 0);
+  }, [events]);
 
   // Focus event: activeEvent if selected, else first upcoming event
-  const focusEvent = activeEvent || upcomingEvents[0] || events[0]!;
+  const focusEvent = useMemo(() => {
+    return activeEvent || upcomingEvents[0] || events[0]!;
+  }, [activeEvent, upcomingEvents, events]);
 
-  const budgetSummary = calculateBudgetSummary(
-    focusEvent.totalBudget,
-    focusEvent.categoryAllocations,
-    focusEvent.expenses
-  );
+  const budgetSummary = useMemo(() => {
+    return calculateBudgetSummary(
+      focusEvent.totalBudget,
+      focusEvent.categoryAllocations,
+      focusEvent.expenses
+    );
+  }, [focusEvent.totalBudget, focusEvent.categoryAllocations, focusEvent.expenses]);
 
-  const completedTasksCount = focusEvent.tasks.filter((t) => t.status === 'completed').length;
-  const totalTasksCount = focusEvent.tasks.length;
-  const overdueTasksCount = focusEvent.tasks.filter((t) => isTaskOverdue(t)).length;
-  const urgentTasksCount = focusEvent.tasks.filter((t) => isTaskUrgent(t)).length;
-  const taskProgressPct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+  const { completedTasksCount, totalTasksCount, overdueTasksCount, urgentTasksCount, taskProgressPct } =
+    useMemo(() => {
+      const completed = focusEvent.tasks.filter((t) => t.status === 'completed').length;
+      const total = focusEvent.tasks.length;
+      const overdue = focusEvent.tasks.filter((t) => isTaskOverdue(t)).length;
+      const urgent = focusEvent.tasks.filter((t) => isTaskUrgent(t)).length;
+      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      return {
+        completedTasksCount: completed,
+        totalTasksCount: total,
+        overdueTasksCount: overdue,
+        urgentTasksCount: urgent,
+        taskProgressPct: pct,
+      };
+    }, [focusEvent.tasks]);
 
-  // Next critical deadline
-  const incompleteTasksSorted = [...focusEvent.tasks]
-    .filter((t) => t.status !== 'completed')
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  // Next critical deadline & sorted upcoming tasks
+  const incompleteTasksSorted = useMemo(() => {
+    return [...focusEvent.tasks]
+      .filter((t) => t.status !== 'completed')
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [focusEvent.tasks]);
+
   const nextDeadlineTask = incompleteTasksSorted[0];
 
-  const daysUntilEvent = calculateDaysRemaining(focusEvent.date);
+  const daysUntilEvent = useMemo(() => {
+    return calculateDaysRemaining(focusEvent.date);
+  }, [focusEvent.date]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>

@@ -16,6 +16,17 @@ interface IdeasViewProps {
   onUpdateEvent: (updated: EventPlan) => void;
 }
 
+const IDEA_CATEGORIES: { id: IdeaCategory; label: string }[] = [
+  { id: 'theme', label: 'Theme & Decor' },
+  { id: 'food', label: 'Food & Menus' },
+  { id: 'activity', label: 'Guest Activities' },
+  { id: 'invitation', label: 'Invitations' },
+  { id: 'entertainment', label: 'Entertainment' },
+  { id: 'budget_friendly', label: 'Budget Alternatives' },
+  { id: 'accessibility', label: 'Accessibility Arrangements' },
+  { id: 'weather', label: 'Weather Contingency' },
+];
+
 export const IdeasView: React.FC<IdeasViewProps> = ({ event, onUpdateEvent }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | IdeaCategory>('all');
   const [showSavedOnly, setShowSavedOnly] = useState(false);
@@ -27,16 +38,7 @@ export const IdeasView: React.FC<IdeasViewProps> = ({ event, onUpdateEvent }) =>
   const [ideaCategory, setIdeaCategory] = useState<IdeaCategory>('theme');
   const [ideaTags, setIdeaTags] = useState('');
 
-  const categories: { id: IdeaCategory; label: string }[] = [
-    { id: 'theme', label: 'Theme & Decor' },
-    { id: 'food', label: 'Food & Menus' },
-    { id: 'activity', label: 'Guest Activities' },
-    { id: 'invitation', label: 'Invitations' },
-    { id: 'entertainment', label: 'Entertainment' },
-    { id: 'budget_friendly', label: 'Budget Alternatives' },
-    { id: 'accessibility', label: 'Accessibility Arrangements' },
-    { id: 'weather', label: 'Weather Contingency' },
-  ];
+  const categories = IDEA_CATEGORIES;
 
   const filteredIdeas = useMemo(() => {
     return event.ideas.filter((idea) => {

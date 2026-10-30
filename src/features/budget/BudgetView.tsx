@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Coins,
   AlertTriangle,
@@ -39,13 +39,26 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ event, onUpdateEvent }) 
   const [editingAllocId, setEditingAllocId] = useState<string | null>(null);
   const [editAllocAmount, setEditAllocAmount] = useState<number | ''>('');
 
-  const summary = calculateBudgetSummary(event.totalBudget, event.categoryAllocations, event.expenses);
-  const categorySummaries = calculateCategorySummaries(event.categoryAllocations, event.expenses);
-  const savingsSuggestions = generateSavingsSuggestions(
-    event.categoryAllocations,
-    event.expenses,
-    event.totalBudget,
-    event.planningPriorities
+  // Memoize financial summaries to avoid recalculations on modal input keystrokes
+  const summary = useMemo(
+    () => calculateBudgetSummary(event.totalBudget, event.categoryAllocations, event.expenses),
+    [event.totalBudget, event.categoryAllocations, event.expenses]
+  );
+
+  const categorySummaries = useMemo(
+    () => calculateCategorySummaries(event.categoryAllocations, event.expenses),
+    [event.categoryAllocations, event.expenses]
+  );
+
+  const savingsSuggestions = useMemo(
+    () =>
+      generateSavingsSuggestions(
+        event.categoryAllocations,
+        event.expenses,
+        event.totalBudget,
+        event.planningPriorities
+      ),
+    [event.categoryAllocations, event.expenses, event.totalBudget, event.planningPriorities]
   );
 
   // Open modal to add expense

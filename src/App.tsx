@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Header } from './components/common/Header';
 import { Sidebar, ActiveTab } from './components/common/Sidebar';
 import { DashboardView } from './features/dashboard/DashboardView';
@@ -33,26 +33,28 @@ export const App: React.FC = () => {
     saveAppState(appState);
   }, [appState]);
 
-  const activeEvent =
-    appState.events.find((e) => e.id === appState.activeEventId) || appState.events[0] || null;
+  // Memoize active event lookup to avoid linear searches on unrelated re-renders
+  const activeEvent = useMemo(() => {
+    return appState.events.find((e) => e.id === appState.activeEventId) || appState.events[0] || null;
+  }, [appState.events, appState.activeEventId]);
 
-  const handleSelectEvent = (eventId: string) => {
+  const handleSelectEvent = useCallback((eventId: string) => {
     setAppState((prev) => ({
       ...prev,
       activeEventId: eventId,
       lastUpdated: new Date().toISOString(),
     }));
-  };
+  }, []);
 
-  const handleUpdateEvent = (updated: EventPlan) => {
+  const handleUpdateEvent = useCallback((updated: EventPlan) => {
     setAppState((prev) => ({
       ...prev,
       events: prev.events.map((e) => (e.id === updated.id ? updated : e)),
       lastUpdated: new Date().toISOString(),
     }));
-  };
+  }, []);
 
-  const handleDeleteEvent = (eventId: string) => {
+  const handleDeleteEvent = useCallback((eventId: string) => {
     setAppState((prev) => {
       const remaining = prev.events.filter((e) => e.id !== eventId);
       const newActive =
@@ -64,13 +66,13 @@ export const App: React.FC = () => {
         lastUpdated: new Date().toISOString(),
       };
     });
-  };
+  }, []);
 
-  const handlePlanReadyForReview = (newPlan: EventPlan) => {
+  const handlePlanReadyForReview = useCallback((newPlan: EventPlan) => {
     setPendingReviewPlan(newPlan);
-  };
+  }, []);
 
-  const handleSaveReviewedPlan = (finalPlan: EventPlan) => {
+  const handleSaveReviewedPlan = useCallback((finalPlan: EventPlan) => {
     setAppState((prev) => {
       // If plan already existed, update; otherwise prepend
       const existingIndex = prev.events.findIndex((e) => e.id === finalPlan.id);
@@ -91,12 +93,12 @@ export const App: React.FC = () => {
 
     setPendingReviewPlan(null);
     setCurrentTab('dashboard');
-  };
+  }, []);
 
-  const handleReloadState = () => {
+  const handleReloadState = useCallback(() => {
     const loaded = loadAppState();
     setAppState(loaded);
-  };
+  }, []);
 
   return (
     <div className="app-container">

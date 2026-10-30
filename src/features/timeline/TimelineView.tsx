@@ -49,11 +49,20 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ event, onUpdateEvent
   }, [event.tasks]);
 
   // Overall metrics
-  const totalTasks = event.tasks.length;
-  const completedTasks = event.tasks.filter((t) => t.status === 'completed').length;
-  const overdueTasks = event.tasks.filter((t) => isTaskOverdue(t)).length;
-  const urgentTasks = event.tasks.filter((t) => isTaskUrgent(t)).length;
-  const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const { totalTasks, completedTasks, overdueTasks, urgentTasks, progressPct } = useMemo(() => {
+    const total = event.tasks.length;
+    const completed = event.tasks.filter((t) => t.status === 'completed').length;
+    const overdue = event.tasks.filter((t) => isTaskOverdue(t)).length;
+    const urgent = event.tasks.filter((t) => isTaskUrgent(t)).length;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return {
+      totalTasks: total,
+      completedTasks: completed,
+      overdueTasks: overdue,
+      urgentTasks: urgent,
+      progressPct: pct,
+    };
+  }, [event.tasks]);
 
   // Filtered & Sorted task list
   const filteredTasks = useMemo(() => {

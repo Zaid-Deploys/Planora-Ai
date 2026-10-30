@@ -7,7 +7,7 @@ const ipRequestMap = new Map<string, RateLimitRecord>();
 
 // Clean up stale entries every 5 minutes to prevent memory leaks in warm serverless containers
 if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
+  const timer = setInterval(() => {
     const now = Date.now();
     for (const [ip, record] of ipRequestMap.entries()) {
       if (now > record.resetAt) {
@@ -15,16 +15,27 @@ if (typeof setInterval !== 'undefined') {
       }
     }
   }, 5 * 60 * 1000);
+  // Ensure background timer doesn't hold process open during tests
+  if (typeof timer === 'object' && timer !== null && 'unref' in timer && typeof (timer as any).unref === 'function') {
+    (timer as any).unref();
+  }
+}
+
+/**
+ * Resets rate limit cache (useful for testing).
+ */
+export function clearRateLimitCache(): void {
+  ipRequestMap.clear();
 }
 
 /**
  * Basic in-memory sliding rate limiter per client IP.
- * Default: maximum 10 planning requests per 60 seconds per IP.
+ * Default: maximum 15 planning requests per 60 seconds per IP.
  * Note: In serverless, memory is per-container instance.
  */
 export function checkRateLimit(
   clientIp: string = 'unknown',
-  maxRequests: number = 10,
+  maxRequests: number = 15,
   windowMs: number = 60 * 1000
 ): { allowed: boolean; remaining: number; resetInMs: number } {
   const now = Date.now();

@@ -12,7 +12,7 @@ import { EventPlan, EventType, EventSetting, SUPPORTED_CURRENCIES } from '../../
 import { PlanGenerationRequest, PlanGenerationResponse } from '../../types/api';
 import { planGenerationRequestSchema } from '../../lib/validation/schemas';
 import { normalizeAllocations, DEFAULT_BUDGET_CATEGORIES } from '../../lib/budget/calculations';
-import { generateDeterministicStarterTasks } from '../../lib/timeline/generator';
+import { generateDeterministicStarterTasks, calculateOffsetDate } from '../../lib/timeline/generator';
 
 interface EventCreateModalProps {
   isOpen: boolean;
@@ -272,27 +272,16 @@ export const EventCreateModal: React.FC<EventCreateModalProps> = ({
       }));
 
       // Convert generated tasks to calendar dates
-      const [year, month, day] = validData.date.split('-').map(Number);
-      const eventTargetDate = new Date(year!, month! - 1, day!);
-
-      const tasks = planData.tasks.map((task, idx) => {
-        const dueDateObj = new Date(eventTargetDate);
-        dueDateObj.setDate(dueDateObj.getDate() - task.daysBeforeEvent);
-        const y = dueDateObj.getFullYear();
-        const m = String(dueDateObj.getMonth() + 1).padStart(2, '0');
-        const d = String(dueDateObj.getDate()).padStart(2, '0');
-
-        return {
-          id: `task-ai-${idx}-${Date.now()}`,
-          title: task.title,
-          description: task.description,
-          category: task.category,
-          dueDate: `${y}-${m}-${d}`,
-          priority: task.priority,
-          status: 'not_started' as const,
-          isAiGenerated: true,
-        };
-      });
+      const tasks = planData.tasks.map((task, idx) => ({
+        id: `task-ai-${idx}-${Date.now()}`,
+        title: task.title,
+        description: task.description,
+        category: task.category,
+        dueDate: calculateOffsetDate(validData.date, -task.daysBeforeEvent),
+        priority: task.priority,
+        status: 'not_started' as const,
+        isAiGenerated: true,
+      }));
 
       // Convert ideas
       const ideas = planData.ideas.map((idea, idx) => ({

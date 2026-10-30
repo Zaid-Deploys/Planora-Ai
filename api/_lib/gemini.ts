@@ -1,12 +1,14 @@
-import { GoogleGenAI } from '@google/genai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PlanGenerationRequest, PlanGenerationResponse } from '../../src/types/api';
 import { generatedPlanSchema } from '../../src/lib/validation/schemas';
+import { reconcileBudgetAllocations } from '../../src/lib/budget/calculations';
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_PRIMARY_MODEL = 'gemini-flash-lite-latest';
+export const DEFAULT_FALLBACK_MODEL = 'gemini-1.5-flash';
+export const GENERATION_TIMEOUT_MS = 25000;
 
 export function getGeminiModel(): string {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_PRIMARY_MODEL;
 }
 
 export function getGeminiApiKey(): string | undefined {
@@ -130,49 +132,123 @@ export function extractJsonFromText(rawText: string): string {
 }
 
 /**
- * Generates an event plan using Google Gemini API.
+ * Determines whether an error from the upstream Gemini API is non-recoverable
+ * (i.e. should immediately fail without wasting time or retries).
+ */
+export function isNonRecoverableError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const status = typeof (err as any)?.status === 'number' ? (err as any).status : 0;
+
+  // 400 Bad Request, 401/403 Invalid API key or permission denied, 429 Quota exhausted
+  if (status === 400 || status === 401 || status === 403 || status === 429) {
+    return true;
+  }
+
+  return (
+    msg.includes('api_key_invalid') ||
+    msg.includes('invalid api key') ||
+    msg.includes('permission_denied') ||
+    msg.includes('unauthorized') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('safety') ||
+    msg.includes('blocked')
+  );
+}
+
+/**
+ * Calls Gemini using the single primary GoogleGenerativeAI SDK.
+ * Passes AbortSignal and timeout options so underlying HTTP requests are aborted on timeout.
+ */
+async function callGeminiModel(
+  genAI: GoogleGenerativeAI,
+  modelName: string,
+  prompt: string,
+  timeoutMs: number
+): Promise<string> {
+  const model = genAI.getGenerativeModel(
+    {
+      model: modelName,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+      },
+    },
+    { timeout: timeoutMs }
+  );
+
+  const abortController = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        abortController.abort();
+      } catch {
+        // Ignore any abort error
+      }
+      reject(new Error(`AI generation request timed out after ${Math.round(timeoutMs / 1000)} seconds.`));
+    }, timeoutMs);
+  });
+
+  const generatePromise = model
+    .generateContent(prompt, {
+      signal: abortController.signal,
+      timeout: timeoutMs,
+    })
+    .then((res) => res.response.text());
+
+  try {
+    const rawText = await Promise.race([generatePromise, timeoutPromise]);
+    return rawText;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Generates an event plan using Google Gemini API with predictable model selection,
+ * bounded timeout, non-recoverable fast-fail, and deterministic budget reconciliation.
  */
 export async function generatePlanWithGemini(
   req: PlanGenerationRequest,
   apiKey: string,
-  modelName: string = DEFAULT_MODEL
+  preferredModel?: string
 ): Promise<PlanGenerationResponse> {
   const prompt = buildPrompt(req);
+  const primaryModel = preferredModel?.trim() || getGeminiModel();
+  const fallbackModel = DEFAULT_FALLBACK_MODEL;
+
+  // Single SDK client initialization
+  const genAI = new GoogleGenerativeAI(apiKey);
 
   let rawOutputText = '';
+  let successfulModel = primaryModel;
+  let primaryError: Error | null = null;
 
+  // 1. Attempt with primary model
   try {
-    // Attempt with @google/genai first
-    const client = new GoogleGenAI({ apiKey });
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        temperature: 0.7,
-      },
-    });
-
-    rawOutputText = response.text || '';
+    rawOutputText = await callGeminiModel(genAI, primaryModel, prompt, GENERATION_TIMEOUT_MS);
   } catch (err: unknown) {
-    // Fallback attempt with @google/generative-ai
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        },
-      });
+    primaryError = err instanceof Error ? err : new Error(String(err));
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      rawOutputText = response.text();
-    } catch (fallbackErr: unknown) {
-      const originalMessage = err instanceof Error ? err.message : String(err);
-      const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      throw new Error(`Upstream Gemini API error: ${fallbackMessage || originalMessage}`);
+    // Fast-fail immediately on non-recoverable errors (e.g. quota, bad key)
+    if (isNonRecoverableError(primaryError)) {
+      throw primaryError;
+    }
+
+    // 2. Fallback attempt ONLY if primary failed with a recoverable transient error and fallback differs
+    if (primaryModel !== fallbackModel) {
+      try {
+        rawOutputText = await callGeminiModel(genAI, fallbackModel, prompt, GENERATION_TIMEOUT_MS);
+        successfulModel = fallbackModel;
+      } catch (fallbackErr: unknown) {
+        const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        throw new Error(`Upstream Gemini API error: ${fallbackMessage || primaryError.message}`);
+      }
+    } else {
+      throw primaryError;
     }
   }
 
@@ -185,7 +261,9 @@ export async function generatePlanWithGemini(
   try {
     parsedJson = JSON.parse(jsonString);
   } catch (parseErr) {
-    throw new Error(`Model response could not be parsed as JSON: ${parseErr instanceof Error ? parseErr.message : 'Unknown syntax error'}`);
+    throw new Error(
+      `Model response could not be parsed as JSON: ${parseErr instanceof Error ? parseErr.message : 'Unknown syntax error'}`
+    );
   }
 
   // Strictly validate parsed structure using Zod
@@ -196,24 +274,12 @@ export async function generatePlanWithGemini(
 
   const data = validationResult.data;
 
-  // Reconcile budget allocations: ensure they sum to totalBudget cleanly
-  let totalPercent = data.budgetAllocations.reduce((sum, b) => sum + b.percentage, 0);
-  if (totalPercent === 0) totalPercent = 100;
-
-  const reconciledAllocations = data.budgetAllocations.map((alloc) => {
-    const adjustedPercent = Math.round((alloc.percentage / totalPercent) * 1000) / 10;
-    const amount = Math.round((req.totalBudget * adjustedPercent) / 100);
-    return {
-      categoryKey: alloc.categoryKey,
-      name: alloc.name,
-      percentage: adjustedPercent,
-      allocatedAmount: amount,
-    };
-  });
+  // Deterministically reconcile budget allocations: 100.0% and exact cent matching
+  const reconciledAllocations = reconcileBudgetAllocations(req.totalBudget, data.budgetAllocations);
 
   return {
     success: true,
-    model: modelName,
+    model: successfulModel,
     overview: data.overview,
     themeDirection: data.themeDirection,
     suggestedActivities: data.suggestedActivities,

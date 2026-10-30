@@ -118,7 +118,7 @@ planora-ai/
 
 - **Frontend:** React 18, TypeScript (Strict), Vite 6, Semantic HTML5, CSS Variables (Design Tokens), Lucide React.
 - **Backend:** TypeScript Serverless Functions (`api/plan.ts`), Vercel Functions runtime.
-- **AI Integration:** Official `@google/genai` (v2.30.0) SDK with fallback to `@google/generative-ai` (v0.24.1). Default model: `gemini-2.5-flash`.
+- **AI Integration:** Google Generative AI SDK (`@google/generative-ai`), predictable model selection (`gemini-flash-lite-latest` with transient fallback to `gemini-1.5-flash`), bounded timeouts, and deterministic budget reconciliation.
 - **Validation:** Zod schemas on both server and client.
 - **Testing:** Vitest 2, `@testing-library/react`, `@testing-library/jest-dom`, JSDOM.
 - **Data Persistence:** Browser `localStorage` (Namespace: `planora_ai_state_v1`, Schema Version: 1).
